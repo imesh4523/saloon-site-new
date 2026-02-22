@@ -30,7 +30,15 @@ import NotFound from "./pages/NotFound";
 import Business from "./pages/Business";
 import hero3dBackground from "@/assets/hero-3d-background.jpg";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 0,
+      refetchOnWindowFocus: false,
+      staleTime: 1000 * 60 * 5, // 5 minutes cache
+    },
+  },
+});
 
 const App = () => (
   <QueryClientProvider client={queryClient}>

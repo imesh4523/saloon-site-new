@@ -50,15 +50,15 @@ export const getSalonBookings = async (req: Request, res: Response) => {
         });
 
         // If needed, we manually attach profiles
-        const customerIds = [...new Set(bookings.map(b => b.customer_id))];
+        const customerIds = [...new Set(bookings.map((b: any) => b.customer_id))];
         const profiles = await prisma.profiles.findMany({
             where: { user_id: { in: customerIds } },
             select: { user_id: true, full_name: true, avatar_url: true, phone: true }
         });
 
-        const profileMap = new Map(profiles.map(p => [p.user_id, p]));
+        const profileMap = new Map(profiles.map((p: any) => [p.user_id, p]));
 
-        const formattedBookings = bookings.map(b => ({
+        const formattedBookings = bookings.map((b: any) => ({
             ...b,
             profiles: profileMap.get(b.customer_id) || null
         }));
@@ -67,6 +67,58 @@ export const getSalonBookings = async (req: Request, res: Response) => {
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: 'Failed to fetch salon bookings' });
+    }
+};
+
+// Get booked slots for a specific date and staff/salon
+export const getBookedSlots = async (req: Request, res: Response) => {
+    try {
+        const { staffId, salonId, date } = req.query;
+
+        if (!date) return res.status(400).json({ error: 'Date is required' });
+
+        // Build date range for the specific day
+        const targetDate = new Date(date as string);
+        const nextDay = new Date(targetDate);
+        nextDay.setDate(targetDate.getDate() + 1);
+
+        const conditions: any = {
+            booking_date: {
+                gte: targetDate,
+                lt: nextDay
+            },
+            status: {
+                in: ['pending', 'confirmed', 'in_progress'] as booking_status[]
+            }
+        };
+
+        if (staffId) conditions.staff_id = staffId as string;
+        if (salonId) conditions.salon_id = salonId as string;
+
+        const bookings = await prisma.bookings.findMany({
+            where: conditions,
+            select: {
+                start_time: true,
+                end_time: true,
+                status: true
+            }
+        });
+
+        // Format times as HH:mm
+        const formatTime = (dateObj: Date) => {
+            return `${dateObj.getUTCHours().toString().padStart(2, '0')}:${dateObj.getUTCMinutes().toString().padStart(2, '0')}`;
+        };
+
+        const bookedSlots = bookings.map(b => ({
+            start_time: formatTime(b.start_time),
+            end_time: formatTime(b.end_time),
+            status: b.status
+        }));
+
+        res.json(bookedSlots);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Failed to fetch booked slots' });
     }
 };
 
