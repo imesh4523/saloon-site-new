@@ -47,15 +47,19 @@ app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', message: 'Backend is running' });
 });
 
+// Support for React Router DOM (Single Page Application fallback)
+// This must be applied BEFORE express.static to rewrite incoming routes to index.html
+import history from 'connect-history-api-fallback';
+app.use(history({
+    rewrites: [
+        { from: /^\/api\/.*$/, to: function (context) { return context.parsedUrl.pathname; } }
+    ]
+}));
+
 // Serve frontend static files (Vite build output is at /dist from repo root)
 // In production, backend/dist/index.js is at depth 2, so ../../dist is the frontend dist
 const frontendDist = path.join(__dirname, '..', '..', 'dist');
 app.use(express.static(frontendDist));
-
-// All non-API routes serve the React app (SPA fallback)
-app.get('*', (req, res) => {
-    res.sendFile(path.join(frontendDist, 'index.html'));
-});
 
 app.listen(port, () => {
     console.log(`Server running on port ${port}`);
