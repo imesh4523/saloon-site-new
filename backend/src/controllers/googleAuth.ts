@@ -29,7 +29,9 @@ if (GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET) {
     passport.use(new GoogleStrategy({
         clientID: GOOGLE_CLIENT_ID,
         clientSecret: GOOGLE_CLIENT_SECRET,
-        callbackURL: BACKEND_URL ? `${BACKEND_URL}/api/auth/google/callback` : '/api/auth/google/callback',
+        // Since we are running the frontend and backend on the same exact domain in DigitalOcean App Platform,
+        // we can safely use FRONTEND_URL to construct the absolute callback if provided, or fallback to relative proxying.
+        callbackURL: FRONTEND_URL ? `${FRONTEND_URL}/api/auth/google/callback` : '/api/auth/google/callback',
         proxy: true,
     }, async (accessToken, refreshToken, profile, done) => {
         try {
