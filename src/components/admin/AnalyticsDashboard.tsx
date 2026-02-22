@@ -13,126 +13,26 @@ import {
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/integrations/api';
 import {
   LineChart, Line, AreaChart, Area, BarChart, Bar,
   PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, Legend
 } from 'recharts';
-import { format, subDays, startOfMonth, endOfMonth, eachDayOfInterval, startOfWeek, endOfWeek } from 'date-fns';
+import { format, subDays, startOfMonth, eachDayOfInterval } from 'date-fns';
 
 const COLORS = ['hsl(var(--primary))', 'hsl(var(--accent))', 'hsl(var(--warning))', 'hsl(var(--success))'];
 
-// Fetch analytics data
 const useAnalytics = (period: string) => {
   return useQuery({
     queryKey: ['analytics', period],
     queryFn: async () => {
-      const now = new Date();
-      let startDate: Date;
-      
-      switch (period) {
-        case '7d':
-          startDate = subDays(now, 7);
-          break;
-        case '30d':
-          startDate = subDays(now, 30);
-          break;
-        case 'month':
-          startDate = startOfMonth(now);
-          break;
-        default:
-          startDate = subDays(now, 7);
-      }
-
-      // Fetch bookings for revenue data
-      const { data: bookings } = await supabase
-        .from('bookings')
-        .select('*')
-        .gte('created_at', startDate.toISOString())
-        .order('created_at', { ascending: true });
-
-      // Fetch user registrations
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('created_at')
-        .gte('created_at', startDate.toISOString());
-
-      // Fetch salon registrations
-      const { data: salons } = await supabase
-        .from('salons')
-        .select('created_at, status')
-        .gte('created_at', startDate.toISOString());
-
-      // Process revenue by day
-      const days = eachDayOfInterval({ start: startDate, end: now });
-      const revenueByDay = days.map(day => {
-        const dayBookings = bookings?.filter(b => 
-          format(new Date(b.created_at), 'yyyy-MM-dd') === format(day, 'yyyy-MM-dd')
-        ) || [];
-        
-        return {
-          date: format(day, 'MMM d'),
-          revenue: dayBookings.reduce((sum, b) => sum + b.total_amount, 0),
-          commission: dayBookings.reduce((sum, b) => sum + b.platform_commission, 0),
-          bookings: dayBookings.length,
-        };
-      });
-
-      // Process user growth
-      const usersByDay = days.map(day => {
-        const count = profiles?.filter(p => 
-          format(new Date(p.created_at), 'yyyy-MM-dd') === format(day, 'yyyy-MM-dd')
-        ).length || 0;
-        
-        return {
-          date: format(day, 'MMM d'),
-          users: count,
-        };
-      });
-
-      // Booking status distribution
-      const statusCounts = {
-        completed: bookings?.filter(b => b.status === 'completed').length || 0,
-        confirmed: bookings?.filter(b => b.status === 'confirmed').length || 0,
-        pending: bookings?.filter(b => b.status === 'pending').length || 0,
-        cancelled: bookings?.filter(b => b.status === 'cancelled').length || 0,
-      };
-
-      // Calculate totals
-      const totalRevenue = bookings?.reduce((sum, b) => sum + b.total_amount, 0) || 0;
-      const totalCommission = bookings?.reduce((sum, b) => sum + b.platform_commission, 0) || 0;
-      const totalBookings = bookings?.length || 0;
-      const newUsers = profiles?.length || 0;
-      const newSalons = salons?.length || 0;
-
-      // Compare with previous period (simple comparison)
-      const previousPeriodStart = subDays(startDate, days.length);
-      const { data: previousBookings } = await supabase
-        .from('bookings')
-        .select('total_amount')
-        .gte('created_at', previousPeriodStart.toISOString())
-        .lt('created_at', startDate.toISOString());
-
-      const previousRevenue = previousBookings?.reduce((sum, b) => sum + b.total_amount, 0) || 1;
-      const revenueChange = ((totalRevenue - previousRevenue) / previousRevenue) * 100;
-
-      return {
-        revenueByDay,
-        usersByDay,
-        statusCounts,
-        totals: {
-          revenue: totalRevenue,
-          commission: totalCommission,
-          bookings: totalBookings,
-          users: newUsers,
-          salons: newSalons,
-          revenueChange: Math.round(revenueChange),
-        },
-      };
+      const { data } = await api.get('/admin/analytics', { params: { period } });
+      return data;
     },
   });
 };
+
 
 export const AnalyticsDashboard = () => {
   const [period, setPeriod] = useState('7d');
@@ -190,12 +90,11 @@ export const AnalyticsDashboard = () => {
                       <p className="text-xl font-bold mt-1">
                         Rs. {data?.totals.revenue.toLocaleString()}
                       </p>
-                      <Badge 
-                        className={`mt-1 ${
-                          (data?.totals.revenueChange || 0) >= 0 
-                            ? 'bg-success/20 text-success' 
-                            : 'bg-destructive/20 text-destructive'
-                        }`}
+                      <Badge
+                        className={`mt-1 ${(data?.totals.revenueChange || 0) >= 0
+                          ? 'bg-success/20 text-success'
+                          : 'bg-destructive/20 text-destructive'
+                          }`}
                       >
                         {(data?.totals.revenueChange || 0) >= 0 ? (
                           <ArrowUpRight className="h-3 w-3 mr-1" />
@@ -306,27 +205,27 @@ export const AnalyticsDashboard = () => {
                 <AreaChart data={data?.revenueByDay}>
                   <defs>
                     <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
+                      <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
                     </linearGradient>
                     <linearGradient id="colorCommission" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="hsl(var(--success))" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="hsl(var(--success))" stopOpacity={0}/>
+                      <stop offset="5%" stopColor="hsl(var(--success))" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="hsl(var(--success))" stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                  <XAxis 
-                    dataKey="date" 
+                  <XAxis
+                    dataKey="date"
                     stroke="hsl(var(--muted-foreground))"
                     fontSize={12}
                   />
-                  <YAxis 
+                  <YAxis
                     stroke="hsl(var(--muted-foreground))"
                     fontSize={12}
                     tickFormatter={(value) => `Rs.${value / 1000}k`}
                   />
-                  <Tooltip 
-                    contentStyle={{ 
+                  <Tooltip
+                    contentStyle={{
                       backgroundColor: 'hsl(var(--card))',
                       border: '1px solid hsl(var(--border))',
                       borderRadius: '8px',
@@ -371,25 +270,25 @@ export const AnalyticsDashboard = () => {
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={data?.revenueByDay}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                  <XAxis 
-                    dataKey="date" 
+                  <XAxis
+                    dataKey="date"
                     stroke="hsl(var(--muted-foreground))"
                     fontSize={12}
                   />
-                  <YAxis 
+                  <YAxis
                     stroke="hsl(var(--muted-foreground))"
                     fontSize={12}
                   />
-                  <Tooltip 
-                    contentStyle={{ 
+                  <Tooltip
+                    contentStyle={{
                       backgroundColor: 'hsl(var(--card))',
                       border: '1px solid hsl(var(--border))',
                       borderRadius: '8px',
                     }}
                   />
-                  <Bar 
-                    dataKey="bookings" 
-                    fill="hsl(var(--accent))" 
+                  <Bar
+                    dataKey="bookings"
+                    fill="hsl(var(--accent))"
                     radius={[4, 4, 0, 0]}
                     name="Bookings"
                   />
@@ -414,17 +313,17 @@ export const AnalyticsDashboard = () => {
               <ResponsiveContainer width="100%" height={300}>
                 <LineChart data={data?.usersByDay}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                  <XAxis 
-                    dataKey="date" 
+                  <XAxis
+                    dataKey="date"
                     stroke="hsl(var(--muted-foreground))"
                     fontSize={12}
                   />
-                  <YAxis 
+                  <YAxis
                     stroke="hsl(var(--muted-foreground))"
                     fontSize={12}
                   />
-                  <Tooltip 
-                    contentStyle={{ 
+                  <Tooltip
+                    contentStyle={{
                       backgroundColor: 'hsl(var(--card))',
                       border: '1px solid hsl(var(--border))',
                       borderRadius: '8px',
@@ -473,8 +372,8 @@ export const AnalyticsDashboard = () => {
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip 
-                    contentStyle={{ 
+                  <Tooltip
+                    contentStyle={{
                       backgroundColor: 'hsl(var(--card))',
                       border: '1px solid hsl(var(--border))',
                       borderRadius: '8px',

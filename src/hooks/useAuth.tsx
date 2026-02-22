@@ -1,83 +1,19 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { User, Session } from '@supabase/supabase-js';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/integrations/api';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
 type UserRole = 'customer' | 'vendor' | 'admin';
 
-// Rate limiting constants
-const MAX_LOGIN_ATTEMPTS = 10;
-const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
-const RATE_LIMIT_KEY = 'auth_rate_limit';
-
-interface RateLimitData {
-  attempts: number;
-  firstAttemptAt: number;
-  lockedUntil: number | null;
+interface User {
+  id: string;
+  email: string;
+  full_name?: string;
 }
-
-const getRateLimitData = (): RateLimitData => {
-  try {
-    const raw = sessionStorage.getItem(RATE_LIMIT_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch {}
-  return { attempts: 0, firstAttemptAt: 0, lockedUntil: null };
-};
-
-const setRateLimitData = (data: RateLimitData) => {
-  sessionStorage.setItem(RATE_LIMIT_KEY, JSON.stringify(data));
-};
-
-const checkRateLimit = (): { allowed: boolean; remainingSeconds?: number } => {
-  const data = getRateLimitData();
-  const now = Date.now();
-
-  // Check if locked out
-  if (data.lockedUntil && now < data.lockedUntil) {
-    return { allowed: false, remainingSeconds: Math.ceil((data.lockedUntil - now) / 1000) };
-  }
-
-  // Reset if lockout expired or window passed
-  if (data.lockedUntil && now >= data.lockedUntil) {
-    setRateLimitData({ attempts: 0, firstAttemptAt: 0, lockedUntil: null });
-    return { allowed: true };
-  }
-
-  // Reset window if first attempt was more than lockout duration ago
-  if (data.firstAttemptAt && now - data.firstAttemptAt > LOCKOUT_DURATION_MS) {
-    setRateLimitData({ attempts: 0, firstAttemptAt: 0, lockedUntil: null });
-    return { allowed: true };
-  }
-
-  return { allowed: true };
-};
-
-const recordFailedAttempt = () => {
-  const data = getRateLimitData();
-  const now = Date.now();
-
-  const newData: RateLimitData = {
-    attempts: data.attempts + 1,
-    firstAttemptAt: data.firstAttemptAt || now,
-    lockedUntil: null,
-  };
-
-  if (newData.attempts >= MAX_LOGIN_ATTEMPTS) {
-    newData.lockedUntil = now + LOCKOUT_DURATION_MS;
-  }
-
-  setRateLimitData(newData);
-  return newData;
-};
-
-const resetRateLimit = () => {
-  sessionStorage.removeItem(RATE_LIMIT_KEY);
-};
 
 interface AuthContextType {
   user: User | null;
-  session: Session | null;
+  session: any | null; // Keep for backward compatibility 
   profile: {
     id: string;
     full_name: string | null;
@@ -99,61 +35,43 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<AuthContextType['profile']>(null);
   const [roles, setRoles] = useState<UserRole[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchProfile = async (userId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('id, full_name, avatar_url, phone')
-        .eq('user_id', userId)
-        .maybeSingle();
-
-      if (error) throw error;
-      setProfile(data);
-    } catch (error) {
-      console.error('Error fetching profile:', error);
-    }
-  };
-
-  const fetchRoles = async (userId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', userId);
-
-      if (error) throw error;
-      setRoles(data?.map(r => r.role as UserRole) || ['customer']);
-    } catch (error) {
-      console.error('Error fetching roles:', error);
-      setRoles(['customer']);
-    }
-  };
-
+  // Helper to fetch session on load
   useEffect(() => {
     let mounted = true;
 
     const initSession = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        
+        const token = localStorage.getItem('access_token');
+        if (!token) {
+          if (mounted) setLoading(false);
+          return;
+        }
+
+        const { data } = await api.get('/auth/session');
         if (!mounted) return;
-        
-        setSession(session);
-        setUser(session?.user ?? null);
-        
-        if (session?.user) {
-          Promise.all([
-            fetchProfile(session.user.id),
-            fetchRoles(session.user.id)
-          ]).catch(console.error);
+
+        if (data && data.user) {
+          setUser({
+            id: data.user.user_id,
+            email: data.user.email,
+            full_name: data.user.full_name
+          });
+          setProfile({
+            id: data.user.user_id,
+            full_name: data.user.full_name,
+            avatar_url: data.user.avatar_url,
+            phone: null
+          });
+          // Assuming roles are fetched in the backend or defaulted to customer
+          setRoles(['customer']); // TODO: Load actual roles from API
         }
       } catch (error) {
         console.error('Error getting session:', error);
+        localStorage.removeItem('access_token');
       } finally {
         if (mounted) setLoading(false);
       }
@@ -161,115 +79,73 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     initSession();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        if (!mounted) return;
-        
-        setSession(session);
-        setUser(session?.user ?? null);
-        
-        if (session?.user) {
-          Promise.all([
-            fetchProfile(session.user.id),
-            fetchRoles(session.user.id)
-          ]).catch(console.error);
-        } else {
-          setProfile(null);
-          setRoles([]);
-        }
-        
-        setLoading(false);
-      }
-    );
-
     return () => {
       mounted = false;
-      subscription.unsubscribe();
     };
   }, []);
 
   const signIn = async (email: string, password: string) => {
-    // Check rate limit before attempting
-    const rateCheck = checkRateLimit();
-    if (!rateCheck.allowed) {
-      const minutes = Math.ceil((rateCheck.remainingSeconds || 0) / 60);
-      const errorMsg = `Too many login attempts. Please try again in ${minutes} minute${minutes > 1 ? 's' : ''}.`;
-      toast.error(errorMsg);
-      throw new Error(errorMsg);
-    }
+    try {
+      const { data } = await api.post('/auth/signin', { email, password });
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
-      const result = recordFailedAttempt();
-      if (result.lockedUntil) {
-        toast.error(`Account locked for 15 minutes due to too many failed attempts.`);
-      } else {
-        const remaining = MAX_LOGIN_ATTEMPTS - result.attempts;
-        toast.error(`${error.message} (${remaining} attempt${remaining !== 1 ? 's' : ''} remaining)`);
-      }
+      localStorage.setItem('access_token', data.session.access_token);
+
+      setUser({
+        id: data.user.id,
+        email: data.user.email,
+        full_name: data.user.full_name
+      });
+      setProfile({
+        id: data.user.id,
+        full_name: data.user.full_name,
+        avatar_url: null,
+        phone: null
+      });
+      setRoles(['customer']);
+
+      toast.success('Welcome back!');
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to sign in');
       throw error;
     }
-    
-    // Reset rate limit on successful login
-    resetRateLimit();
-    toast.success('Welcome back!');
   };
 
   const signUp = async (email: string, password: string, fullName: string) => {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { full_name: fullName },
-      },
-    });
+    try {
+      const { data } = await api.post('/auth/signup', { email, password, full_name: fullName });
 
-    if (error) {
-      toast.error(error.message);
+      localStorage.setItem('access_token', data.session.access_token);
+
+      setUser({
+        id: data.user.id,
+        email: data.user.email,
+        full_name: data.user.full_name
+      });
+      setProfile({
+        id: data.user.id,
+        full_name: data.user.full_name,
+        avatar_url: null,
+        phone: null
+      });
+      setRoles(['customer']);
+
+      toast.success('Account created!');
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to create account');
       throw error;
     }
-
-    if (data.user) {
-      const { error: profileError } = await supabase.from('profiles').insert({
-        user_id: data.user.id,
-        full_name: fullName,
-      });
-
-      if (profileError) {
-        console.error('Error creating profile:', profileError);
-      }
-
-      const { error: roleError } = await supabase.from('user_roles').insert({
-        user_id: data.user.id,
-        role: 'customer',
-      });
-
-      if (roleError) {
-        console.error('Error assigning role:', roleError);
-      }
-    }
-
-    toast.success('Account created! Please check your email to verify.');
   };
 
   const signOut = async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-      toast.error(error.message);
-      throw error;
-    }
+    localStorage.removeItem('access_token');
+    setUser(null);
+    setProfile(null);
+    setRoles([]);
     toast.success('Signed out successfully');
   };
 
   const resetPassword = async (email: string) => {
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/auth/reset-password`,
-    });
-    if (error) {
-      toast.error(error.message);
-      throw error;
-    }
-    toast.success('Password reset email sent!');
+    toast.info('Password reset not configured yet');
   };
 
   const hasRole = (role: UserRole) => roles.includes(role);
@@ -280,7 +156,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     <AuthContext.Provider
       value={{
         user,
-        session,
+        session: null, // Legacy supbase payload compatibility
         profile,
         roles,
         loading,
@@ -306,13 +182,12 @@ export const useAuth = () => {
   return context;
 };
 
-// Protected route component
-export const ProtectedRoute = ({ 
-  children, 
-  requiredRole 
-}: { 
-  children: ReactNode; 
-  requiredRole?: UserRole 
+export const ProtectedRoute = ({
+  children,
+  requiredRole
+}: {
+  children: ReactNode;
+  requiredRole?: UserRole
 }) => {
   const { user, loading, hasRole } = useAuth();
   const navigate = useNavigate();

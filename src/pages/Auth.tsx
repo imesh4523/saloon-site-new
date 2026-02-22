@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
-import { lovable } from '@/integrations/lovable';
+
 import heroImage from '@/assets/hero-salon.jpg';
 
 // Google Icon Component
@@ -44,7 +44,7 @@ const Auth = () => {
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    
+
     try {
       await signIn(email, password);
       navigate('/');
@@ -55,26 +55,17 @@ const Auth = () => {
     }
   };
 
-  const handleGoogleSignIn = async () => {
-    setIsLoading(true);
-    try {
-      const { error } = await lovable.auth.signInWithOAuth("google", {
-        redirect_uri: window.location.origin,
-      });
-      if (error) {
-        toast.error('Google sign-in failed: ' + error.message);
-      }
-    } catch (error) {
-      toast.error('Google sign-in failed. Please try again.');
-    } finally {
-      setIsLoading(false);
-    }
+  const handleGoogleSignIn = () => {
+    const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+    // Redirect to backend Google OAuth - it will handle the flow and redirect back to /auth/callback
+    window.location.href = `${backendUrl}/auth/google`;
   };
+
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    
+
     try {
       await signUp(email, password, fullName);
       // Stay on page - user needs to verify email
@@ -110,7 +101,7 @@ const Auth = () => {
               Beauty Services
             </h2>
             <p className="text-muted-foreground text-lg">
-              Join thousands of customers who trust our platform for their 
+              Join thousands of customers who trust our platform for their
               beauty and wellness needs.
             </p>
           </div>

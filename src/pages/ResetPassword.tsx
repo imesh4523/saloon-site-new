@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/integrations/api';
 import { toast } from 'sonner';
 import MobileNav from '@/components/MobileNav';
 
@@ -14,7 +14,7 @@ const ResetPassword = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const emailFromUrl = searchParams.get('email') || '';
-  
+
   const [email, setEmail] = useState(emailFromUrl);
   const [code, setCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -25,47 +25,31 @@ const ResetPassword = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (code.length !== 6) {
       toast.error('Please enter the 6-digit code');
       return;
     }
-    
+
     if (newPassword !== confirmPassword) {
       toast.error('Passwords do not match');
       return;
     }
-    
+
     if (newPassword.length < 6) {
       toast.error('Password must be at least 6 characters');
       return;
     }
-    
+
     setIsSubmitting(true);
-    
+
     try {
-      const { data, error } = await supabase.functions.invoke('verify-reset-code', {
-        body: { email, code, newPassword },
-      });
-
-      if (error) throw error;
-      
-      if (data.error) {
-        toast.error(data.error);
-        return;
-      }
-
+      await api.post('/auth/reset-password', { email, code, newPassword });
       setIsSuccess(true);
       toast.success('Password reset successfully!');
-      
-      // Redirect to login after 2 seconds
-      setTimeout(() => {
-        navigate('/auth');
-      }, 2000);
-      
+      setTimeout(() => navigate('/auth'), 2000);
     } catch (error: any) {
-      console.error('Reset error:', error);
-      toast.error(error.message || 'Failed to reset password');
+      toast.error(error.response?.data?.error || 'Failed to reset password. Check your code.');
     } finally {
       setIsSubmitting(false);
     }

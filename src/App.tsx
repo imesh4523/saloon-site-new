@@ -11,6 +11,7 @@ import VendorDashboard from "./pages/VendorDashboard";
 import AdminDashboard from "./pages/AdminDashboard";
 import MainAdminLogin from "./pages/MainAdminLogin";
 import Auth from "./pages/Auth";
+import AuthCallback from "./pages/AuthCallback";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import Bookings from "./pages/Bookings";
@@ -41,19 +42,19 @@ const App = () => (
           {/* Global 3D SaaS Background */}
           <div className="fixed inset-0 -z-10">
             {/* 3D Hero Background Image */}
-            <div 
+            <div
               className="absolute inset-0 bg-cover bg-center bg-no-repeat"
               style={{ backgroundImage: `url(${hero3dBackground})` }}
             />
-            
+
             {/* Soft Glass Overlay for readability */}
             <div className="absolute inset-0 bg-gradient-to-b from-white/30 via-transparent to-white/50 backdrop-blur-[1px]" />
-            
+
             {/* Additional Dreamy Orbs for extra depth */}
             <div className="absolute top-0 left-0 w-[400px] h-[400px] bg-gradient-to-br from-violet-300/20 to-transparent rounded-full blur-[100px] animate-float" />
             <div className="absolute bottom-0 right-0 w-[350px] h-[350px] bg-gradient-to-tl from-pink-300/15 to-transparent rounded-full blur-[80px] animate-float" style={{ animationDelay: '3s' }} />
           </div>
-          
+
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/explore" element={<Explore />} />
@@ -77,6 +78,7 @@ const App = () => (
             <Route path="/admin/settings" element={<ProtectedRoute requiredRole="admin"><AdminDashboard /></ProtectedRoute>} />
             <Route path="/admin/analytics" element={<ProtectedRoute requiredRole="admin"><AdminDashboard /></ProtectedRoute>} />
             <Route path="/auth" element={<Auth />} />
+            <Route path="/auth/callback" element={<AuthCallback />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/bookings" element={<Bookings />} />

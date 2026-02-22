@@ -1,0 +1,520 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model activity_logs {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id     String?  @db.Uuid
+  action      String
+  entity_type String
+  entity_id   String?  @db.Uuid
+  details     Json?
+  ip_address  String?
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+}
+
+model bookings {
+  id                     String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customer_id            String                   @db.Uuid
+  salon_id               String                   @db.Uuid
+  staff_id               String                   @db.Uuid
+  service_id             String                   @db.Uuid
+  booking_date           DateTime                 @db.Date
+  start_time             DateTime                 @db.Time(6)
+  end_time               DateTime                 @db.Time(6)
+  status                 booking_status           @default(pending)
+  total_amount           Decimal                  @db.Decimal
+  platform_commission    Decimal                  @db.Decimal
+  vendor_payout          Decimal                  @db.Decimal
+  notes                  String?
+  payment_method         String                   @default("cash")
+  payment_status         String                   @default("pending")
+  paid_at                DateTime?                @db.Timestamptz(6)
+  commission_settled     Boolean?                 @default(false)
+  settled_at             DateTime?                @db.Timestamptz(6)
+  created_at             DateTime                 @default(now()) @db.Timestamptz(6)
+  updated_at             DateTime                 @default(now()) @db.Timestamptz(6)
+  salons                 salons                   @relation(fields: [salon_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  services               services                 @relation(fields: [service_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  staff                  staff                    @relation(fields: [staff_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  commission_settlements commission_settlements[]
+  crypto_payments        crypto_payments[]
+  reviews                reviews?
+  support_tickets        support_tickets[]
+
+  @@index([booking_date], map: "idx_bookings_booking_date")
+  @@index([commission_settled], map: "idx_bookings_commission_settled")
+  @@index([status], map: "idx_bookings_status")
+}
+
+model commission_settlements {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  salon_id       String    @db.Uuid
+  booking_id     String?   @db.Uuid
+  amount         Decimal   @db.Decimal
+  type           String
+  payment_method String?
+  notes          String?
+  created_by     String?   @db.Uuid
+  created_at     DateTime? @default(now()) @db.Timestamptz(6)
+  bookings       bookings? @relation(fields: [booking_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  salons         salons    @relation(fields: [salon_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([salon_id], map: "idx_commission_settlements_salon")
+  @@index([type], map: "idx_commission_settlements_type")
+}
+
+model crypto_payments {
+  id               String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id          String                @db.Uuid
+  booking_id       String?               @db.Uuid
+  invoice_id       String
+  order_id         String
+  price_amount     Decimal               @db.Decimal
+  price_currency   String                @default("USD")
+  pay_currency     String
+  pay_amount       Decimal?              @db.Decimal
+  pay_address      String?
+  payment_id       String?
+  status           crypto_payment_status @default(waiting)
+  actually_paid    Decimal?              @db.Decimal
+  outcome_amount   Decimal?              @db.Decimal
+  outcome_currency String?
+  ipn_callback_url String?
+  expires_at       DateTime?             @db.Timestamptz(6)
+  paid_at          DateTime?             @db.Timestamptz(6)
+  created_at       DateTime              @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime              @default(now()) @db.Timestamptz(6)
+  bookings         bookings?             @relation(fields: [booking_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([invoice_id], map: "idx_crypto_payments_invoice_id")
+  @@index([order_id], map: "idx_crypto_payments_order_id")
+  @@index([status], map: "idx_crypto_payments_status")
+  @@index([user_id], map: "idx_crypto_payments_user_id")
+}
+
+model districts {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  province_id String    @db.Uuid
+  name_en     String
+  name_si     String
+  code        String    @unique
+  created_at  DateTime  @default(now()) @db.Timestamptz(6)
+  provinces   provinces @relation(fields: [province_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  salons      salons[]
+  towns       towns[]
+
+  @@index([province_id], map: "idx_districts_province_id")
+}
+
+model email_logs {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id         String?   @db.Uuid
+  recipient_email String
+  subject         String
+  template_type   String
+  status          String    @default("pending")
+  resend_id       String?
+  sent_at         DateTime? @db.Timestamptz(6)
+  error_message   String?
+  metadata        Json?
+  created_at      DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@index([created_at(sort: Desc)], map: "idx_email_logs_created_at")
+  @@index([template_type], map: "idx_email_logs_template_type")
+  @@index([user_id], map: "idx_email_logs_user_id")
+}
+
+model notification_preferences {
+  id                      String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id                 String   @unique @db.Uuid
+  push_enabled            Boolean? @default(false)
+  push_booking_updates    Boolean? @default(true)
+  push_payment_updates    Boolean? @default(true)
+  push_reminders          Boolean? @default(true)
+  email_booking_confirm   Boolean? @default(true)
+  email_booking_cancelled Boolean? @default(true)
+  email_booking_complete  Boolean? @default(true)
+  email_booking_reminder  Boolean? @default(true)
+  email_payment_received  Boolean? @default(true)
+  email_promotions        Boolean? @default(false)
+  sms_enabled             Boolean? @default(false)
+  created_at              DateTime @default(now()) @db.Timestamptz(6)
+  updated_at              DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([user_id], map: "idx_notification_preferences_user_id")
+}
+
+model password_reset_codes {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email      String
+  code       String
+  expires_at DateTime  @db.Timestamptz(6)
+  used       Boolean?  @default(false)
+  created_at DateTime? @default(now()) @db.Timestamptz(6)
+
+  @@index([code], map: "idx_password_reset_codes_code")
+  @@index([email], map: "idx_password_reset_codes_email")
+}
+
+model payout_requests {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  salon_id     String    @db.Uuid
+  wallet_id    String    @db.Uuid
+  amount       Decimal   @db.Decimal
+  bank_details Json?
+  status       String    @default("pending")
+  notes        String?
+  processed_by String?   @db.Uuid
+  processed_at DateTime? @db.Timestamptz(6)
+  created_at   DateTime  @default(now()) @db.Timestamptz(6)
+  salons       salons    @relation(fields: [salon_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  wallets      wallets   @relation(fields: [wallet_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model profiles {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id          String    @unique @db.Uuid
+  full_name        String?
+  avatar_url       String?
+  phone            String?
+  is_suspended     Boolean?  @default(false)
+  last_login_at    DateTime? @db.Timestamptz(6)
+  last_login_ip    String?
+  registration_ip  String?
+  suspended_at     DateTime? @db.Timestamptz(6)
+  suspended_reason   String?
+  created_at         DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime  @default(now()) @db.Timestamptz(6)
+  email              String?   @unique @db.VarChar(255)
+  encrypted_password String?   @db.VarChar(255)
+}
+
+model provinces {
+  id         String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name_en    String
+  name_si    String
+  code       String      @unique
+  created_at DateTime    @default(now()) @db.Timestamptz(6)
+  districts  districts[]
+  salons     salons[]
+}
+
+model push_subscriptions {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id      String    @db.Uuid
+  endpoint     String    @unique
+  p256dh_key   String
+  auth_key     String
+  device_info  Json?
+  is_active    Boolean   @default(true)
+  last_used_at DateTime? @db.Timestamptz(6)
+  created_at   DateTime  @default(now()) @db.Timestamptz(6)
+}
+
+model reviews {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  booking_id     String   @unique @db.Uuid
+  customer_id    String   @db.Uuid
+  salon_id       String   @db.Uuid
+  rating         Int
+  comment        String?
+  is_hidden      Boolean? @default(false)
+  hidden_by      String?  @db.Uuid
+  hidden_reason  String?
+  admin_response String?
+  created_at     DateTime @default(now()) @db.Timestamptz(6)
+  bookings       bookings @relation(fields: [booking_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  salons         salons   @relation(fields: [salon_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model salon_images {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  salon_id      String   @db.Uuid
+  image_url     String
+  display_order Int?     @default(0)
+  created_at    DateTime @default(now()) @db.Timestamptz(6)
+  salons        salons   @relation(fields: [salon_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model salons {
+  id                      String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  owner_id                String                   @db.Uuid
+  name                    String
+  slug                    String                   @unique
+  description             String?
+  address                 String
+  city                    String
+  latitude                Decimal?                 @db.Decimal
+  longitude               Decimal?                 @db.Decimal
+  phone                   String?
+  email                   String?
+  cover_image             String?
+  logo                    String?
+  status                  salon_status             @default(pending)
+  rating                  Decimal?                 @default(0) @db.Decimal
+  review_count            Int?                     @default(0)
+  commission_rate         Decimal?                 @default(15) @db.Decimal
+  credit_limit            Decimal?                 @default(10000) @db.Decimal
+  credit_limit_orders     Int?
+  orders_since_settlement Int?                     @default(0)
+  platform_payable        Decimal?                 @default(0) @db.Decimal
+  trust_level             String?                  @default("standard")
+  auto_frozen_at          DateTime?                @db.Timestamptz(6)
+  auto_freeze_reason      String?
+  province_id             String?                  @db.Uuid
+  district_id             String?                  @db.Uuid
+  town_id                 String?                  @db.Uuid
+  created_at              DateTime                 @default(now()) @db.Timestamptz(6)
+  updated_at              DateTime                 @default(now()) @db.Timestamptz(6)
+  bookings                bookings[]
+  commission_settlements  commission_settlements[]
+  payout_requests         payout_requests[]
+  reviews                 reviews[]
+  salon_images            salon_images[]
+  districts               districts?               @relation(fields: [district_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  provinces               provinces?               @relation(fields: [province_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  towns                   towns?                   @relation(fields: [town_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  services                services[]
+  staff                   staff[]
+  support_tickets         support_tickets[]
+
+  @@index([owner_id], map: "idx_salons_owner_id")
+  @@index([slug], map: "idx_salons_slug")
+  @@index([status], map: "idx_salons_status")
+}
+
+model service_categories {
+  id            String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name          String
+  icon          String?
+  display_order Int?       @default(0)
+  is_active     Boolean?   @default(true)
+  created_at    DateTime   @default(now()) @db.Timestamptz(6)
+  services      services[]
+}
+
+model services {
+  id                 String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  salon_id           String              @db.Uuid
+  category_id        String?             @db.Uuid
+  name               String
+  description        String?
+  duration_minutes   Int                 @default(30)
+  price              Decimal             @db.Decimal
+  is_active          Boolean?            @default(true)
+  created_at         DateTime            @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime            @default(now()) @db.Timestamptz(6)
+  bookings           bookings[]
+  service_categories service_categories? @relation(fields: [category_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  salons             salons              @relation(fields: [salon_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  staff_services     staff_services[]
+}
+
+model staff {
+  id                 String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  salon_id           String               @db.Uuid
+  user_id            String?              @db.Uuid
+  name               String
+  title              String?
+  bio                String?
+  avatar_url         String?
+  is_active          Boolean?             @default(true)
+  created_at         DateTime             @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime             @default(now()) @db.Timestamptz(6)
+  bookings           bookings[]
+  salons             salons               @relation(fields: [salon_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  staff_availability staff_availability[]
+  staff_services     staff_services[]
+  staff_shifts       staff_shifts[]
+}
+
+model staff_availability {
+  id           String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  staff_id     String      @db.Uuid
+  day_of_week  day_of_week
+  start_time   DateTime    @db.Time(6)
+  end_time     DateTime    @db.Time(6)
+  is_available Boolean?    @default(true)
+  staff        staff       @relation(fields: [staff_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model staff_services {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  staff_id   String   @db.Uuid
+  service_id String   @db.Uuid
+  services   services @relation(fields: [service_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  staff      staff    @relation(fields: [staff_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([staff_id, service_id], map: "staff_services_staff_service_key")
+}
+
+model staff_shifts {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  staff_id   String   @db.Uuid
+  date       DateTime @db.Date
+  start_time DateTime @db.Time(6)
+  end_time   DateTime @db.Time(6)
+  status     String   @default("scheduled")
+  notes      String?
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  staff      staff    @relation(fields: [staff_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model support_tickets {
+  id                 String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id            String            @db.Uuid
+  subject            String
+  description        String
+  status             ticket_status     @default(open)
+  priority           ticket_priority   @default(medium)
+  assigned_admin_id  String?           @db.Uuid
+  related_salon_id   String?           @db.Uuid
+  related_booking_id String?           @db.Uuid
+  resolved_at        DateTime?         @db.Timestamptz(6)
+  created_at         DateTime          @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime          @default(now()) @db.Timestamptz(6)
+  bookings           bookings?         @relation(fields: [related_booking_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  salons             salons?           @relation(fields: [related_salon_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  ticket_messages    ticket_messages[]
+}
+
+model system_settings {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  key         String   @unique
+  value       String?
+  description String?
+  category    String   @default("general")
+  is_secret   Boolean? @default(false)
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime @default(now()) @db.Timestamptz(6)
+}
+
+model ticket_messages {
+  id              String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ticket_id       String          @db.Uuid
+  sender_id       String          @db.Uuid
+  message         String
+  is_admin        Boolean         @default(false)
+  created_at      DateTime        @default(now()) @db.Timestamptz(6)
+  support_tickets support_tickets @relation(fields: [ticket_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model towns {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  district_id String    @db.Uuid
+  name_en     String
+  name_si     String
+  postal_code String?
+  created_at  DateTime  @default(now()) @db.Timestamptz(6)
+  salons      salons[]
+  districts   districts @relation(fields: [district_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([district_id], map: "idx_towns_district_id")
+}
+
+model user_roles {
+  id      String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id String   @db.Uuid
+  role    app_role @default(customer)
+
+  @@unique([user_id, role])
+}
+
+model wallet_transactions {
+  id             String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  wallet_id      String                  @db.Uuid
+  type           wallet_transaction_type
+  amount         Decimal                 @db.Decimal
+  balance_before Decimal                 @db.Decimal
+  balance_after  Decimal                 @db.Decimal
+  description    String?
+  reference_id   String?
+  created_by     String?                 @db.Uuid
+  created_at     DateTime                @default(now()) @db.Timestamptz(6)
+  wallets        wallets                 @relation(fields: [wallet_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model wallets {
+  id                  String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id             String                @unique @db.Uuid
+  balance             Decimal               @default(0) @db.Decimal
+  currency            String                @default("LKR")
+  is_frozen           Boolean               @default(false)
+  created_at          DateTime              @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime              @default(now()) @db.Timestamptz(6)
+  payout_requests     payout_requests[]
+  wallet_transactions wallet_transactions[]
+}
+
+enum app_role {
+  customer
+  vendor
+  admin
+}
+
+enum booking_status {
+  pending
+  confirmed
+  in_progress
+  completed
+  cancelled
+}
+
+enum crypto_payment_status {
+  waiting
+  confirming
+  confirmed
+  sending
+  partially_paid
+  finished
+  failed
+  refunded
+  expired
+}
+
+enum day_of_week {
+  monday
+  tuesday
+  wednesday
+  thursday
+  friday
+  saturday
+  sunday
+}
+
+enum salon_status {
+  pending
+  approved
+  rejected
+  suspended
+}
+
+enum ticket_priority {
+  low
+  medium
+  high
+  urgent
+}
+
+enum ticket_status {
+  open
+  in_progress
+  resolved
+  closed
+}
+
+enum wallet_transaction_type {
+  credit
+  debit
+  refund
+  commission
+  payout
+  adjustment
+}

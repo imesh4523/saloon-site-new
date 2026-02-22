@@ -15,7 +15,7 @@ import { Progress } from '@/components/ui/progress';
 import {
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/integrations/api';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { formatCurrency } from '@/lib/format';
@@ -33,38 +33,8 @@ const useCreditSettings = () => {
   return useQuery({
     queryKey: ['credit_settings'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('system_settings')
-        .select('key, value')
-        .in('key', [
-          'auto_freeze_enabled',
-          'default_credit_limit_new',
-          'default_credit_limit_standard',
-          'default_credit_limit_trusted',
-          'default_credit_limit_premium',
-          'default_order_settlement_limit',
-        ]);
-
-      if (error) throw error;
-
-      const settings: CreditSettings = {
-        auto_freeze_enabled: true,
-        default_credit_limit_new: 5000,
-        default_credit_limit_standard: 10000,
-        default_credit_limit_trusted: 25000,
-        default_credit_limit_premium: 50000,
-        default_order_settlement_limit: 0,
-      };
-
-      data.forEach((s) => {
-        if (s.key === 'auto_freeze_enabled') {
-          settings.auto_freeze_enabled = s.value === 'true';
-        } else {
-          (settings as any)[s.key] = parseInt(s.value || '0', 10);
-        }
-      });
-
-      return settings;
+      const { data } = await api.get('/admin/settings/credit-limits');
+      return data as CreditSettings;
     },
   });
 };
@@ -73,30 +43,8 @@ const useSalonsNearLimit = () => {
   return useQuery({
     queryKey: ['salons_near_limit'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('salons')
-        .select('id, name, city, platform_payable, credit_limit, trust_level, status, auto_frozen_at, auto_freeze_reason')
-        .eq('status', 'approved')
-        .or('status.eq.suspended,auto_frozen_at.not.is.null')
-        .order('platform_payable', { ascending: false });
-
-      if (error) throw error;
-      
-      // Add frozen salons and calculate usage percentage
-      const { data: frozenSalons, error: frozenError } = await supabase
-        .from('salons')
-        .select('id, name, city, platform_payable, credit_limit, trust_level, status, auto_frozen_at, auto_freeze_reason')
-        .not('auto_frozen_at', 'is', null);
-
-      if (frozenError) throw frozenError;
-
-      // Merge and deduplicate
-      const allSalons = [...(data || []), ...(frozenSalons || [])];
-      const uniqueSalons = allSalons.filter((s, i, arr) => 
-        arr.findIndex(x => x.id === s.id) === i
-      );
-
-      return uniqueSalons.map(s => ({
+      const { data } = await api.get('/admin/salons/near-limit');
+      return (data as any[]).map(s => ({
         ...s,
         platform_payable: Number(s.platform_payable) || 0,
         credit_limit: Number(s.credit_limit) || 10000,
@@ -112,30 +60,20 @@ const useUpdateCreditSettings = () => {
 
   return useMutation({
     mutationFn: async (settings: Partial<CreditSettings>) => {
-      const updates = Object.entries(settings).map(([key, value]) => ({
-        key,
-        value: String(value),
-      }));
-
-      for (const update of updates) {
-        const { error } = await supabase
-          .from('system_settings')
-          .update({ value: update.value, updated_at: new Date().toISOString() })
-          .eq('key', update.key);
-
-        if (error) throw error;
-      }
+      const { data } = await api.patch('/admin/settings/credit-limits', settings);
+      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['credit_settings'] });
       queryClient.invalidateQueries({ queryKey: ['system-settings'] });
       toast.success('Credit limit settings updated');
     },
-    onError: (error: Error) => {
-      toast.error(error.message || 'Failed to update settings');
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Failed to update settings');
     },
   });
 };
+
 
 export const CreditLimitSettings = () => {
   const { data: settings, isLoading: settingsLoading } = useCreditSettings();
@@ -343,19 +281,17 @@ export const CreditLimitSettings = () => {
                   key={salon.id}
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  className={`p-4 rounded-xl ${
-                    salon.is_frozen
+                  className={`p-4 rounded-xl ${salon.is_frozen
                       ? 'bg-destructive/10 border border-destructive/30'
                       : salon.usage_percent >= 80
-                      ? 'bg-warning/10 border border-warning/30'
-                      : 'bg-muted/30'
-                  }`}
+                        ? 'bg-warning/10 border border-warning/30'
+                        : 'bg-muted/30'
+                    }`}
                 >
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-3">
-                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                        salon.is_frozen ? 'bg-destructive/20' : 'bg-muted/50'
-                      }`}>
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${salon.is_frozen ? 'bg-destructive/20' : 'bg-muted/50'
+                        }`}>
                         {salon.is_frozen ? (
                           <Snowflake className="h-4 w-4 text-destructive" />
                         ) : (
@@ -373,9 +309,8 @@ export const CreditLimitSettings = () => {
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className={`font-bold ${
-                        salon.is_frozen ? 'text-destructive' : salon.usage_percent >= 80 ? 'text-warning' : ''
-                      }`}>
+                      <p className={`font-bold ${salon.is_frozen ? 'text-destructive' : salon.usage_percent >= 80 ? 'text-warning' : ''
+                        }`}>
                         {formatCurrency(salon.platform_payable)}
                       </p>
                       <p className="text-xs text-muted-foreground">
@@ -386,15 +321,14 @@ export const CreditLimitSettings = () => {
                   <div className="space-y-1">
                     <Progress
                       value={salon.usage_percent}
-                      className={`h-2 ${
-                        salon.is_frozen
+                      className={`h-2 ${salon.is_frozen
                           ? '[&>div]:bg-destructive'
                           : salon.usage_percent >= 80
-                          ? '[&>div]:bg-warning'
-                          : salon.usage_percent >= 50
-                          ? '[&>div]:bg-accent'
-                          : ''
-                      }`}
+                            ? '[&>div]:bg-warning'
+                            : salon.usage_percent >= 50
+                              ? '[&>div]:bg-accent'
+                              : ''
+                        }`}
                     />
                     <div className="flex items-center justify-between text-xs text-muted-foreground">
                       <span>{Math.round(salon.usage_percent)}% used</span>

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { api } from "@/integrations/api";
+import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,9 +9,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Shield, Loader2, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 
-// Main Admin Login Component
 const MainAdminLogin = () => {
   const navigate = useNavigate();
+  const { signIn } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -22,54 +23,23 @@ const MainAdminLogin = () => {
     setError("");
 
     try {
-      // Sign in with email and password
-      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (authError) {
-        setError(authError.message);
-        setLoading(false);
-        return;
-      }
-
-      if (!authData.user) {
-        setError("Login failed. Please try again.");
-        setLoading(false);
-        return;
-      }
+      // Sign in via custom backend
+      const { data } = await api.post('/auth/sign-in', { email, password });
+      const { token, user } = data;
 
       // Check if user has admin role
-      const { data: roleData, error: roleError } = await supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", authData.user.id)
-        .eq("role", "admin")
-        .maybeSingle();
-
-      if (roleError) {
-        console.error("Role check error:", roleError);
-        await supabase.auth.signOut();
-        setError("Error checking permissions.");
-        setLoading(false);
-        return;
-      }
-
-      if (!roleData) {
-        // User is not an admin - sign them out
-        await supabase.auth.signOut();
+      if (!user?.roles?.includes('admin')) {
         setError("Access denied. Admin privileges required.");
         setLoading(false);
         return;
       }
 
-      // Success - redirect to admin dashboard
+      // Store token
+      localStorage.setItem('auth_token', token);
       toast.success("Welcome, Admin!");
       navigate("/admin/dashboard");
-    } catch (err) {
-      console.error("Login error:", err);
-      setError("An unexpected error occurred.");
+    } catch (err: any) {
+      setError(err.response?.data?.error || "Login failed. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -97,7 +67,7 @@ const MainAdminLogin = () => {
                 <span>{error}</span>
               </div>
             )}
-            
+
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
@@ -111,7 +81,7 @@ const MainAdminLogin = () => {
                 className="bg-background"
               />
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
               <Input
@@ -126,11 +96,7 @@ const MainAdminLogin = () => {
               />
             </div>
 
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={loading}
-            >
+            <Button type="submit" className="w-full" disabled={loading}>
               {loading ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -147,7 +113,7 @@ const MainAdminLogin = () => {
 
           <div className="mt-6 pt-6 border-t border-border">
             <p className="text-xs text-center text-muted-foreground">
-              This portal is for system administrators only. 
+              This portal is for system administrators only.
               Unauthorized access attempts are logged.
             </p>
           </div>

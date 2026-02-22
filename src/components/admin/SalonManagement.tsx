@@ -34,31 +34,19 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useSalons, useUpdateSalonStatus } from '@/hooks/useData';
 import { useUpdateSalonCommission } from '@/hooks/useAdminData';
+import { api } from '@/integrations/api';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
-import { supabase } from '@/integrations/supabase/client';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 // Suspend salon mutation
 const useSuspendSalon = () => {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: async ({ salonId, suspend }: { salonId: string; suspend: boolean }) => {
-      const { error } = await supabase
-        .from('salons')
-        .update({ status: suspend ? 'suspended' : 'approved' })
-        .eq('id', salonId);
-      
-      if (error) throw error;
-
-      await supabase.from('activity_logs').insert({
-        user_id: (await supabase.auth.getUser()).data.user?.id,
-        entity_type: 'salon',
-        entity_id: salonId,
-        action: suspend ? 'suspend_salon' : 'unsuspend_salon',
-        details: {},
-      });
+      const { data } = await api.patch(`/admin/salons/${salonId}/suspend`, { suspend });
+      return data;
     },
     onSuccess: (_, { suspend }) => {
       queryClient.invalidateQueries({ queryKey: ['salons'] });
@@ -69,6 +57,7 @@ const useSuspendSalon = () => {
     },
   });
 };
+
 
 interface SalonDetailSheetProps {
   salon: any;
@@ -115,10 +104,10 @@ const SalonDetailSheet = ({ salon, isOpen, onClose, onAction }: SalonDetailSheet
                   salon.status === 'approved'
                     ? 'bg-success/20 text-success'
                     : salon.status === 'suspended'
-                    ? 'bg-destructive/20 text-destructive'
-                    : salon.status === 'rejected'
-                    ? 'bg-destructive/20 text-destructive'
-                    : 'bg-warning/20 text-warning'
+                      ? 'bg-destructive/20 text-destructive'
+                      : salon.status === 'rejected'
+                        ? 'bg-destructive/20 text-destructive'
+                        : 'bg-warning/20 text-warning'
                 }
               >
                 {salon.status}
@@ -195,14 +184,14 @@ const SalonDetailSheet = ({ salon, isOpen, onClose, onAction }: SalonDetailSheet
           <TabsContent value="actions" className="space-y-3 mt-4">
             {salon.status === 'pending' && (
               <>
-                <Button 
+                <Button
                   className="w-full gap-2 bg-success hover:bg-success/90"
                   onClick={() => onAction('approve', salon.id)}
                 >
                   <CheckCircle className="h-4 w-4" />
                   Approve Salon
                 </Button>
-                <Button 
+                <Button
                   variant="destructive"
                   className="w-full gap-2"
                   onClick={() => onAction('reject', salon.id)}
@@ -214,7 +203,7 @@ const SalonDetailSheet = ({ salon, isOpen, onClose, onAction }: SalonDetailSheet
             )}
 
             {salon.status === 'approved' && (
-              <Button 
+              <Button
                 variant="destructive"
                 className="w-full gap-2"
                 onClick={() => onAction('suspend', salon.id)}
@@ -225,7 +214,7 @@ const SalonDetailSheet = ({ salon, isOpen, onClose, onAction }: SalonDetailSheet
             )}
 
             {salon.status === 'suspended' && (
-              <Button 
+              <Button
                 className="w-full gap-2 bg-success hover:bg-success/90"
                 onClick={() => onAction('reactivate', salon.id)}
               >
@@ -234,7 +223,7 @@ const SalonDetailSheet = ({ salon, isOpen, onClose, onAction }: SalonDetailSheet
               </Button>
             )}
 
-            <Button 
+            <Button
               variant="outline"
               className="w-full gap-2"
               onClick={() => onAction('commission', salon.id)}
@@ -263,13 +252,13 @@ export const SalonManagement = () => {
   const updateCommission = useUpdateSalonCommission();
 
   const filteredSalons = salons?.filter(salon => {
-    const matchesSearch = 
+    const matchesSearch =
       salon.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       salon.city.toLowerCase().includes(searchTerm.toLowerCase()) ||
       salon.address?.toLowerCase().includes(searchTerm.toLowerCase());
-    
+
     const matchesStatus = statusFilter === 'all' || salon.status === statusFilter;
-    
+
     return matchesSearch && matchesStatus;
   }) || [];
 
@@ -354,8 +343,8 @@ export const SalonManagement = () => {
             className="gap-2"
           >
             {label}
-            <Badge 
-              variant="secondary" 
+            <Badge
+              variant="secondary"
               className={statusFilter === value ? 'bg-background/20' : ''}
             >
               {statusCounts[value as keyof typeof statusCounts]}
@@ -407,10 +396,10 @@ export const SalonManagement = () => {
                             salon.status === 'approved'
                               ? 'bg-success/20 text-success text-[10px]'
                               : salon.status === 'suspended'
-                              ? 'bg-destructive/20 text-destructive text-[10px]'
-                              : salon.status === 'rejected'
-                              ? 'bg-destructive/20 text-destructive text-[10px]'
-                              : 'bg-warning/20 text-warning text-[10px]'
+                                ? 'bg-destructive/20 text-destructive text-[10px]'
+                                : salon.status === 'rejected'
+                                  ? 'bg-destructive/20 text-destructive text-[10px]'
+                                  : 'bg-warning/20 text-warning text-[10px]'
                           }
                         >
                           {salon.status}
@@ -459,8 +448,8 @@ export const SalonManagement = () => {
               </TableHeader>
               <TableBody>
                 {filteredSalons.map((salon) => (
-                  <TableRow 
-                    key={salon.id} 
+                  <TableRow
+                    key={salon.id}
                     className="border-border/50 cursor-pointer hover:bg-muted/50"
                     onClick={() => {
                       setSelectedSalon(salon);
@@ -493,10 +482,10 @@ export const SalonManagement = () => {
                           salon.status === 'approved'
                             ? 'bg-success/20 text-success'
                             : salon.status === 'suspended'
-                            ? 'bg-destructive/20 text-destructive'
-                            : salon.status === 'rejected'
-                            ? 'bg-destructive/20 text-destructive'
-                            : 'bg-warning/20 text-warning'
+                              ? 'bg-destructive/20 text-destructive'
+                              : salon.status === 'rejected'
+                                ? 'bg-destructive/20 text-destructive'
+                                : 'bg-warning/20 text-warning'
                         }
                       >
                         {salon.status}
@@ -542,7 +531,7 @@ export const SalonManagement = () => {
                           <DropdownMenuSeparator />
                           {salon.status === 'pending' && (
                             <>
-                              <DropdownMenuItem 
+                              <DropdownMenuItem
                                 className="text-success"
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -552,7 +541,7 @@ export const SalonManagement = () => {
                                 <CheckCircle className="h-4 w-4 mr-2" />
                                 Approve
                               </DropdownMenuItem>
-                              <DropdownMenuItem 
+                              <DropdownMenuItem
                                 className="text-destructive"
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -565,7 +554,7 @@ export const SalonManagement = () => {
                             </>
                           )}
                           {salon.status === 'approved' && (
-                            <DropdownMenuItem 
+                            <DropdownMenuItem
                               className="text-destructive"
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -577,7 +566,7 @@ export const SalonManagement = () => {
                             </DropdownMenuItem>
                           )}
                           {salon.status === 'suspended' && (
-                            <DropdownMenuItem 
+                            <DropdownMenuItem
                               className="text-success"
                               onClick={(e) => {
                                 e.stopPropagation();

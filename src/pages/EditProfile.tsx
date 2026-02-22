@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/integrations/api';
 import { toast } from 'sonner';
 import MobileNav from '@/components/MobileNav';
 
@@ -24,20 +24,11 @@ const EditProfile = () => {
 
     setIsLoading(true);
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({
-          full_name: fullName,
-          phone: phone,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('user_id', user.id);
-
-      if (error) throw error;
+      await api.patch('/profile', { full_name: fullName, phone });
       toast.success('Profile updated successfully');
       navigate('/profile');
     } catch (error: any) {
-      toast.error(error.message || 'Failed to update profile');
+      toast.error(error.response?.data?.error || 'Failed to update profile');
     } finally {
       setIsLoading(false);
     }

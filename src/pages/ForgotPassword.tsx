@@ -5,7 +5,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/integrations/api';
 import { toast } from 'sonner';
 import MobileNav from '@/components/MobileNav';
 
@@ -18,32 +18,13 @@ const ForgotPassword = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-    
+
     try {
-      const { data, error } = await supabase.functions.invoke('send-reset-code', {
-        body: { email },
-      });
-
-      if (error) throw error;
-      
-      if (data.error) {
-        toast.error(data.error);
-        setIsSubmitting(false);
-        return;
-      }
-
-      // For development - show code if SMTP not configured
-      if (data.devCode) {
-        toast.info(`Dev Mode - Code: ${data.devCode}`, { duration: 30000 });
-      }
-
-      // Always show the "Enter Code" screen for security (don't reveal if email exists)
+      await api.post('/auth/forgot-password', { email });
       setIsSubmitted(true);
-      toast.success('If an account exists with this email, a reset code has been sent!');
-      
+      toast.success('If an account exists with this email, a reset link has been sent!');
     } catch (error: any) {
-      console.error('Reset error:', error);
-      toast.error(error.message || 'Failed to send reset code');
+      toast.error('Failed to send reset email. Please try again.');
     } finally {
       setIsSubmitting(false);
     }

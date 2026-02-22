@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/integrations/api';
 
 export interface Province {
   id: string;
@@ -27,37 +27,23 @@ export interface Town {
   created_at: string;
 }
 
-// Fetch all provinces
 export const useProvinces = () => {
   return useQuery({
     queryKey: ['provinces'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('provinces')
-        .select('*')
-        .order('name_en');
-      
-      if (error) throw error;
+      const { data } = await api.get('/locations/provinces');
       return data as Province[];
     },
-    staleTime: 1000 * 60 * 60, // 1 hour - location data rarely changes
+    staleTime: 1000 * 60 * 60,
   });
 };
 
-// Fetch districts by province
 export const useDistricts = (provinceId: string | null) => {
   return useQuery({
     queryKey: ['districts', provinceId],
     queryFn: async () => {
       if (!provinceId) return [];
-      
-      const { data, error } = await supabase
-        .from('districts')
-        .select('*')
-        .eq('province_id', provinceId)
-        .order('name_en');
-      
-      if (error) throw error;
+      const { data } = await api.get(`/locations/districts`, { params: { provinceId } });
       return data as District[];
     },
     enabled: !!provinceId,
@@ -65,37 +51,23 @@ export const useDistricts = (provinceId: string | null) => {
   });
 };
 
-// Fetch all districts (for filtering when province changes)
 export const useAllDistricts = () => {
   return useQuery({
     queryKey: ['districts', 'all'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('districts')
-        .select('*')
-        .order('name_en');
-      
-      if (error) throw error;
+      const { data } = await api.get('/locations/districts');
       return data as District[];
     },
     staleTime: 1000 * 60 * 60,
   });
 };
 
-// Fetch towns by district
 export const useTowns = (districtId: string | null) => {
   return useQuery({
     queryKey: ['towns', districtId],
     queryFn: async () => {
       if (!districtId) return [];
-      
-      const { data, error } = await supabase
-        .from('towns')
-        .select('*')
-        .eq('district_id', districtId)
-        .order('name_en');
-      
-      if (error) throw error;
+      const { data } = await api.get(`/locations/towns`, { params: { districtId } });
       return data as Town[];
     },
     enabled: !!districtId,
@@ -103,24 +75,17 @@ export const useTowns = (districtId: string | null) => {
   });
 };
 
-// Fetch all towns (for filtering when district changes)
 export const useAllTowns = () => {
   return useQuery({
     queryKey: ['towns', 'all'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('towns')
-        .select('*')
-        .order('name_en');
-      
-      if (error) throw error;
+      const { data } = await api.get('/locations/towns');
       return data as Town[];
     },
     staleTime: 1000 * 60 * 60,
   });
 };
 
-// Helper to get location display name
 export const getLocationDisplayName = (
   town?: Town | null,
   district?: District | null,

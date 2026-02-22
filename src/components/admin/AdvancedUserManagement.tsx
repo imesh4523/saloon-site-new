@@ -30,7 +30,7 @@ import {
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAllUsers, useWalletAdjustment, useToggleWalletFreeze } from '@/hooks/useAdminData';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/integrations/api';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -39,36 +39,11 @@ import { Users } from 'lucide-react';
 // Suspend user mutation
 const useSuspendUser = () => {
   const queryClient = useQueryClient();
-  
-  return useMutation({
-    mutationFn: async ({ 
-      userId, 
-      suspend, 
-      reason 
-    }: { 
-      userId: string; 
-      suspend: boolean; 
-      reason?: string;
-    }) => {
-      const { error } = await supabase
-        .from('profiles')
-        .update({
-          is_suspended: suspend,
-          suspended_at: suspend ? new Date().toISOString() : null,
-          suspended_reason: suspend ? reason : null,
-        })
-        .eq('user_id', userId);
-      
-      if (error) throw error;
 
-      // Log the action
-      await supabase.from('activity_logs').insert({
-        user_id: (await supabase.auth.getUser()).data.user?.id,
-        entity_type: 'user',
-        entity_id: userId,
-        action: suspend ? 'suspend_user' : 'unsuspend_user',
-        details: { reason },
-      });
+  return useMutation({
+    mutationFn: async ({ userId, suspend, reason }: { userId: string; suspend: boolean; reason?: string }) => {
+      const { data } = await api.patch(`/admin/users/${userId}/suspend`, { suspend, reason });
+      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['all-users'] });
@@ -83,52 +58,22 @@ const useSuspendUser = () => {
 // Update user role mutation
 const useUpdateUserRole = () => {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
-    mutationFn: async ({ 
-      userId, 
-      role 
-    }: { 
-      userId: string; 
-      role: 'customer' | 'vendor' | 'admin';
-    }) => {
-      // Check if role exists
-      const { data: existingRole } = await supabase
-        .from('user_roles')
-        .select('*')
-        .eq('user_id', userId)
-        .eq('role', role)
-        .single();
-
-      if (existingRole) {
-        throw new Error('User already has this role');
-      }
-
-      // Add new role
-      const { error } = await supabase
-        .from('user_roles')
-        .insert({ user_id: userId, role });
-      
-      if (error) throw error;
-
-      // Log the action
-      await supabase.from('activity_logs').insert({
-        user_id: (await supabase.auth.getUser()).data.user?.id,
-        entity_type: 'user_role',
-        entity_id: userId,
-        action: 'add_role',
-        details: { role },
-      });
+    mutationFn: async ({ userId, role }: { userId: string; role: 'customer' | 'vendor' | 'admin' }) => {
+      const { data } = await api.post(`/admin/users/${userId}/roles`, { role });
+      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['all-users'] });
       toast.success('Role added successfully');
     },
-    onError: (error: Error) => {
-      toast.error(error.message || 'Failed to update role');
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Failed to update role');
     },
   });
 };
+
 
 interface WalletDialogProps {
   isOpen: boolean;
@@ -271,13 +216,13 @@ const SuspendDialog = ({ isOpen, onClose, user }: SuspendDialogProps) => {
 
   const handleSuspend = async () => {
     if (!user) return;
-    
+
     await suspendUser.mutateAsync({
       userId: user.user_id,
       suspend: !user.is_suspended,
       reason,
     });
-    
+
     setReason('');
     onClose();
   };
@@ -297,7 +242,7 @@ const SuspendDialog = ({ isOpen, onClose, user }: SuspendDialogProps) => {
             {user.is_suspended ? 'Unsuspend User' : 'Suspend User'}
           </DialogTitle>
           <DialogDescription>
-            {user.is_suspended 
+            {user.is_suspended
               ? `Restore access for ${user.full_name}`
               : `This will prevent ${user.full_name} from accessing their account`
             }
@@ -331,8 +276,8 @@ const SuspendDialog = ({ isOpen, onClose, user }: SuspendDialogProps) => {
             variant={user.is_suspended ? 'default' : 'destructive'}
             disabled={suspendUser.isPending}
           >
-            {suspendUser.isPending 
-              ? 'Processing...' 
+            {suspendUser.isPending
+              ? 'Processing...'
               : user.is_suspended ? 'Unsuspend User' : 'Suspend User'
             }
           </Button>
@@ -456,16 +401,16 @@ export const AdvancedUserManagement = () => {
   const suspendUser = useSuspendUser();
 
   const filteredUsers = users?.filter(user => {
-    const matchesSearch = 
+    const matchesSearch =
       user.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       user.phone?.includes(searchTerm) ||
       user.user_id.includes(searchTerm);
-    
+
     const matchesRole = roleFilter === 'all' || user.roles.includes(roleFilter as 'admin' | 'customer' | 'vendor');
-    const matchesStatus = statusFilter === 'all' || 
+    const matchesStatus = statusFilter === 'all' ||
       (statusFilter === 'active' && !user.is_suspended) ||
       (statusFilter === 'suspended' && user.is_suspended);
-    
+
     return matchesSearch && matchesRole && matchesStatus;
   }) || [];
 
@@ -529,7 +474,7 @@ export const AdvancedUserManagement = () => {
                 className="pl-10 bg-muted/50"
               />
             </div>
-            
+
             <Select value={roleFilter} onValueChange={setRoleFilter}>
               <SelectTrigger className="w-[140px] bg-muted/50">
                 <SelectValue placeholder="Role" />
@@ -598,7 +543,7 @@ export const AdvancedUserManagement = () => {
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-      {([
+        {([
           { label: 'Total Users', value: users?.length || 0, icon: Users, color: 'text-primary' },
           { label: 'Vendors', value: users?.filter(u => u.roles.includes('vendor')).length || 0, icon: Shield, color: 'text-accent' },
           { label: 'Suspended', value: users?.filter((u: any) => u.is_suspended).length || 0, icon: UserX, color: 'text-destructive' },
@@ -642,7 +587,7 @@ export const AdvancedUserManagement = () => {
                 <TableHeader>
                   <TableRow className="border-border/50">
                     <TableHead className="w-[50px]">
-                      <Checkbox 
+                      <Checkbox
                         checked={selectedUsers.length === filteredUsers.length && filteredUsers.length > 0}
                         onCheckedChange={handleSelectAll}
                       />
@@ -667,7 +612,7 @@ export const AdvancedUserManagement = () => {
                         className="border-border/50"
                       >
                         <TableCell>
-                          <Checkbox 
+                          <Checkbox
                             checked={selectedUsers.includes(user.user_id)}
                             onCheckedChange={(checked) => {
                               if (checked) {
@@ -727,7 +672,7 @@ export const AdvancedUserManagement = () => {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="glass-card border-border/50">
-                              <DropdownMenuItem 
+                              <DropdownMenuItem
                                 className="gap-2"
                                 onClick={() => {
                                   setSelectedUser(user);
@@ -737,7 +682,7 @@ export const AdvancedUserManagement = () => {
                                 <Eye className="h-4 w-4" />
                                 View Details
                               </DropdownMenuItem>
-                              <DropdownMenuItem 
+                              <DropdownMenuItem
                                 className="gap-2"
                                 onClick={() => {
                                   setSelectedUser(user);
@@ -748,7 +693,7 @@ export const AdvancedUserManagement = () => {
                                 Manage Wallet
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
-                              <DropdownMenuItem 
+                              <DropdownMenuItem
                                 className="gap-2 text-destructive"
                                 onClick={() => {
                                   setSelectedUser(user);
