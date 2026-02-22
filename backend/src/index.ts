@@ -12,6 +12,7 @@ dotenv.config();
 import './controllers/googleAuth';
 
 const app = express();
+app.set('trust proxy', 1); // Trust reverse proxy (DigitalOcean)
 const port = process.env.PORT || 5000;
 const prisma = new PrismaClient();
 

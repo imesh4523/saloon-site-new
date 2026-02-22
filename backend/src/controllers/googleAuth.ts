@@ -9,7 +9,8 @@ const JWT_SECRET = process.env.JWT_SECRET || 'secret';
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
-const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:5000';
+const BACKEND_URL = process.env.BACKEND_URL || '';
+const FRONTEND_URL = process.env.FRONTEND_URL || '';
 
 // Helper: get user roles from DB
 const getUserRoles = async (userId: string): Promise<string[]> => {
@@ -28,7 +29,8 @@ if (GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET) {
     passport.use(new GoogleStrategy({
         clientID: GOOGLE_CLIENT_ID,
         clientSecret: GOOGLE_CLIENT_SECRET,
-        callbackURL: `${BACKEND_URL}/api/auth/google/callback`,
+        callbackURL: BACKEND_URL ? `${BACKEND_URL}/api/auth/google/callback` : '/api/auth/google/callback',
+        proxy: true,
     }, async (accessToken, refreshToken, profile, done) => {
         try {
             const email = profile.emails?.[0]?.value;
@@ -84,7 +86,7 @@ export const googleAuth = passport.authenticate('google', {
 });
 
 export const googleCallback = [
-    passport.authenticate('google', { session: false, failureRedirect: `${process.env.FRONTEND_URL || 'http://localhost:8080'}/auth?error=google_failed` }),
+    passport.authenticate('google', { session: false, failureRedirect: FRONTEND_URL ? `${FRONTEND_URL}/auth?error=google_failed` : `/auth?error=google_failed` }),
     async (req: any, res: any) => {
         try {
             const user = req.user as any;
@@ -96,12 +98,10 @@ export const googleCallback = [
                 { expiresIn: '7d' }
             );
 
-            const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:8080';
-            // Redirect to frontend with token in query param (frontend reads and stores in localStorage)
-            res.redirect(`${frontendUrl}/auth/callback?token=${token}&id=${user.user_id}&email=${encodeURIComponent(user.email)}&name=${encodeURIComponent(user.full_name || '')}&roles=${encodeURIComponent(roles.join(','))}`);
+            const params = `token=${token}&id=${user.user_id}&email=${encodeURIComponent(user.email)}&name=${encodeURIComponent(user.full_name || '')}&roles=${encodeURIComponent(roles.join(','))}`;
+            res.redirect(FRONTEND_URL ? `${FRONTEND_URL}/auth/callback?${params}` : `/auth/callback?${params}`);
         } catch (error) {
-            const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:8080';
-            res.redirect(`${frontendUrl}/auth?error=google_failed`);
+            res.redirect(FRONTEND_URL ? `${FRONTEND_URL}/auth?error=google_failed` : `/auth?error=google_failed`);
         }
     }
 ];
