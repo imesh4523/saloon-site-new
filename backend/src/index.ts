@@ -52,7 +52,7 @@ app.get('/api/health', (req, res) => {
 import history from 'connect-history-api-fallback';
 app.use(history({
     rewrites: [
-        { from: /^\/api\/.*$/, to: function (context) { return context.parsedUrl.pathname; } }
+        { from: /^\/api\/.*$/, to: function (context: any) { return context.parsedUrl.pathname; } }
     ]
 }));
 
