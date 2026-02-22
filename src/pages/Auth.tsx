@@ -56,9 +56,9 @@ const Auth = () => {
   };
 
   const handleGoogleSignIn = () => {
-    const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-    // Redirect to backend Google OAuth - it will handle the flow and redirect back to /auth/callback
-    window.location.href = `${backendUrl}/auth/google`;
+    // In production (DigitalOcean), the frontend and backend are served from the same domain.
+    // In dev, Vite proxies /api to the backend. Using a relative URL ensures it works in both places.
+    window.location.href = `/api/auth/google`;
   };
 
 
