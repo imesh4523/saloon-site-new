@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import session from 'express-session';
 import passport from 'passport';
+import path from 'path';
 import { PrismaClient } from './generated/prisma';
 
 dotenv.config();
@@ -34,6 +35,7 @@ app.use(session({
 }));
 app.use(passport.initialize());
 
+// API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/salons', salonRoutes);
 app.use('/api/services', servicesRoutes);
@@ -42,6 +44,16 @@ app.use('/api/bookings', bookingsRoutes);
 
 app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', message: 'Backend is running' });
+});
+
+// Serve frontend static files (Vite build output is at /dist from repo root)
+// In production, backend/dist/index.js is at depth 2, so ../../dist is the frontend dist
+const frontendDist = path.join(__dirname, '..', '..', 'dist');
+app.use(express.static(frontendDist));
+
+// All non-API routes serve the React app (SPA fallback)
+app.get('*', (req, res) => {
+    res.sendFile(path.join(frontendDist, 'index.html'));
 });
 
 app.listen(port, () => {
