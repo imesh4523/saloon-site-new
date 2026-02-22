@@ -4,7 +4,7 @@ import dotenv from 'dotenv';
 import session from 'express-session';
 import passport from 'passport';
 import path from 'path';
-import { PrismaClient } from './generated/prisma';
+import { PrismaClient } from '@prisma/client';
 
 dotenv.config();
 
